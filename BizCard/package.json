@@ -1,6 +1,4 @@
-{
-  "name": "bizcard-scanner",
-  "version": "1.0.0",
-  "description": "Business Card Manager",
-  "private": true
+﻿{
+  "name": "bizcard",
+  "version": "1.0.0"
 }
