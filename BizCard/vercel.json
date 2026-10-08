@@ -1,6 +1,7 @@
 {
   "buildCommand": "echo 'No build needed'",
+  "public": ".",
   "rewrites": [
-    { "source": "/(.*)", "destination": "/public/index.html" }
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
