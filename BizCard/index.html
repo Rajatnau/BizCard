@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Business Card Manager</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100">
+    <div id="root"></div>
+
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <script type="text/babel">
+        const { useState, useRef, useEffect } = React;
+
+        const BusinessCardManager = () => {
+            const [cardImage, setCardImage] = useState(null);
+            const [isExtracting, setIsExtracting] = useState(false);
+            const [formData, setFormData] = useState({
+                companyName: '',
+                name: '',
+                designation: '',
+                email: '',
+                phone1: '',
+                phone2: '',
+                website: '',
+                additionalInfo: '',
+            });
+            const [savedCards, setSavedCards] = useState([]);
+            const [editingId, setEditingId] = useState(null);
+            const fileInputRef = useRef(null);
+
+            useEffect(() => {
+                loadSavedCards();
+            }, []);
+
+            const loadSavedCards = () => {
+                try {
+                    const cards = JSON.parse(localStorage.getItem('businessCards') || '[]');
+                    setSavedCards(cards);
+                } catch (e) {
+                    console.error('Error loading saved cards:', e);
+                }
+            };
+
+            const handleImageUpload = async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.onload = async (event) => {
+                    setCardImage(event.target.result);
+                    await extractTextFromCard(event.target.result);
+                };
+                reader.readAsDataURL(file);
+            };
+
+            const extractTextFromCard = async (imageDataUrl) => {
+                setIsExtracting(true);
+                try {
+                    const formDataToSend = new FormData();
+
+                    // Convert data URL to blob
+                    const response = await fetch(imageDataUrl);
+                    const blob = await response.blob();
+
+                    formDataToSend.append('filename', 'card.png');
+                    formDataToSend.append('isOverlayRequired', false);
+                    formDataToSend.append('apikey', '6d107441-38d0-403b-8caa-4bea1004e5f8');
+                    formDataToSend.append('file', blob);
+
+                    const ocrResponse = await fetch('https://api.ocr.space/parse/image', {
+                        method: 'POST',
+                        body: formDataToSend
+                    });
+
+                    const ocrResult = await ocrResponse.json();
+
+                    if (ocrResult.isErroredOnProcessing === false && ocrResult.ParsedText) {
+                        parseBusinessCardText(ocrResult.ParsedText);
+                    }
+                } catch (error) {
+                    console.log('OCR extraction failed, manual entry required');
+                } finally {
+                    setIsExtracting(false);
+                }
+            };
+
+            const parseBusinessCardText = (text) => {
+                const lines = text.split('\n').map(l => l.trim()).filter(line => line && line.length > 2);
+                const newFormData = { ...formData };
+
+                lines.forEach((line) => {
+                    const lowerLine = line.toLowerCase();
+
+                    // Email
+                    const emailMatch = line.match(/[\w\.-]+@[\w\.-]+\.\w+/);
+                    if (emailMatch && !newFormData.email) {
+                        newFormData.email = emailMatch[0];
+                    }
+
+                    // Phone numbers
+                    const phoneMatch = line.match(/\+?[\d\s\-\(\)]{10,}/);
+                    if (phoneMatch && /\d{7,}/.test(phoneMatch[0])) {
+                        if (!newFormData.phone1) {
+                            newFormData.phone1 = phoneMatch[0].trim();
+                        } else if (!newFormData.phone2) {
+                            newFormData.phone2 = phoneMatch[0].trim();
+                        }
+                    }
+
+                    // Website
+                    const urlMatch = line.match(/(?:https?:\/\/)?(?:www\.)?[\w\.-]+\.[\w]{2,}/);
+                    if (urlMatch && !newFormData.website) {
+                        newFormData.website = urlMatch[0];
+                    }
+
+                    // Designation keywords
+                    if ((lowerLine.includes('director') || lowerLine.includes('founder') || lowerLine.includes('ceo') ||
+                         lowerLine.includes('manager') || lowerLine.includes('head')) && !newFormData.designation && line.length < 40) {
+                        newFormData.designation = line;
+                    }
+
+                    // Company keywords
+                    if ((lowerLine.includes('systems') || lowerLine.includes('solutions') || lowerLine.includes('services') ||
+                         lowerLine.includes('technologies')) && !newFormData.companyName && line.length < 60) {
+                        newFormData.companyName = line;
+                    }
+                });
+
+                // Find name (usually first line or second line)
+                if (!newFormData.name && lines.length > 0) {
+                    const potentialNames = lines.filter(line => {
+                        const lower = line.toLowerCase();
+                        return line.length < 50 &&
+                               !line.includes('@') &&
+                               !line.includes('www') &&
+                               !lower.includes('systems') &&
+                               !lower.includes('solutions') &&
+                               !lower.includes('specializ');
+                    });
+
+                    if (potentialNames.length > 0) {
+                        newFormData.name = potentialNames[0];
+                    }
+                }
+
+                setFormData(newFormData);
+            };
+
+            const handleFormChange = (e) => {
+                const { name, value } = e.target;
+                setFormData(prev => ({ ...prev, [name]: value }));
+            };
+
+            const handleSave = () => {
+                if (!formData.name) {
+                    alert('Please enter at least a name');
+                    return;
+                }
+
+                const card = {
+                    id: editingId || Date.now(),
+                    timestamp: new Date().toLocaleString(),
+                    image: cardImage,
+                    ...formData,
+                };
+
+                let updatedCards;
+                if (editingId) {
+                    updatedCards = savedCards.map(c => c.id === editingId ? card : c);
+                    setEditingId(null);
+                    alert('Business card updated!');
+                } else {
+                    updatedCards = [...savedCards, card];
+                    alert('Business card saved!');
+                }
+
+                setSavedCards(updatedCards);
+                localStorage.setItem('businessCards', JSON.stringify(updatedCards));
+                resetForm();
+            };
+
+            const handleLoadCard = (card) => {
+                setCardImage(card.image);
+                setFormData({
+                    companyName: card.companyName,
+                    name: card.name,
+                    designation: card.designation,
+                    email: card.email,
+                    phone1: card.phone1,
+                    phone2: card.phone2,
+                    website: card.website,
+                    additionalInfo: card.additionalInfo,
+                });
+                setEditingId(card.id);
+                window.scrollTo(0, 0);
+            };
+
+            const handleDelete = (id) => {
+                if (confirm('Are you sure?')) {
+                    const updatedCards = savedCards.filter(card => card.id !== id);
+                    setSavedCards(updatedCards);
+                    localStorage.setItem('businessCards', JSON.stringify(updatedCards));
+                }
+            };
+
+            const resetForm = () => {
+                setCardImage(null);
+                setEditingId(null);
+                setFormData({
+                    companyName: '',
+                    name: '',
+                    designation: '',
+                    email: '',
+                    phone1: '',
+                    phone2: '',
+                    website: '',
+                    additionalInfo: '',
+                });
+                if (fileInputRef.current) {
+                    fileInputRef.current.value = '';
+                }
+            };
+
+            return (
+                <div className="min-h-screen bg-gray-100">
+                    {/* Header */}
+                    <div className="bg-white shadow">
+                        <div className="max-w-7xl mx-auto px-4 py-6">
+                            <h1 className="text-4xl font-bold text-gray-900">Business Card Manager</h1>
+                            <p className="text-gray-600 mt-1">Collect, organize, and manage business cards</p>
+                        </div>
+                    </div>
+
+                    <div className="max-w-7xl mx-auto px-4 py-8">
+                        {/* Main Content */}
+                        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+                            {/* Left: Image Section (1 column) */}
+                            <div className="lg:col-span-1">
+                                <div className="bg-white rounded-lg shadow-lg p-6 h-full">
+                                    <h2 className="text-lg font-bold text-gray-900 mb-4">Card Image</h2>
+
+                                    {isExtracting && (
+                                        <div className="bg-blue-100 border border-blue-300 rounded-lg p-4 mb-4 text-center">
+                                            <div className="animate-spin h-6 w-6 text-blue-600 mx-auto mb-2"></div>
+                                            <p className="text-sm font-medium text-blue-700">Extracting text from card...</p>
+                                        </div>
+                                    )}
+
+                                    <div
+                                        onClick={() => fileInputRef.current?.click()}
+                                        className="border-2 border-dashed border-blue-300 rounded-lg p-4 text-center cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition bg-blue-50"
+                                    >
+                                        {cardImage ? (
+                                            <div className="space-y-3">
+                                                <img src={cardImage} alt="Business Card" className="w-full h-auto rounded" />
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setCardImage(null);
+                                                    }}
+                                                    className="w-full bg-red-500 text-white px-3 py-2 rounded hover:bg-red-600 text-sm font-medium"
+                                                >
+                                                    Remove
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <div className="py-8">
+                                                <svg className="mx-auto h-12 w-12 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+                                                </svg>
+                                                <p className="mt-2 text-sm font-medium text-gray-700">Click to upload</p>
+                                                <p className="text-xs text-gray-500">Card image</p>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <input
+                                        ref={fileInputRef}
+                                        type="file"
+                                        accept="image/*"
+                                        onChange={handleImageUpload}
+                                        className="hidden"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Right: Form Section (4 columns) */}
+                            <div className="lg:col-span-4">
+                                <div className="bg-white rounded-lg shadow-lg p-8">
+                                    <h2 className="text-2xl font-bold text-gray-900 mb-6">Card Details</h2>
+
+                                    <div className="space-y-5">
+                                        {/* Name & Designation Row */}
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-sm font-semibold text-gray-700 mb-2">Name *</label>
+                                                <input
+                                                    type="text"
+                                                    name="name"
+                                                    value={formData.name}
+                                                    onChange={handleFormChange}
+                                                    placeholder="e.g., Shiva Jayagopal"
+                                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-semibold text-gray-700 mb-2">Designation</label>
+                                                <input
+                                                    type="text"
+                                                    name="designation"
+                                                    value={formData.designation}
+                                                    onChange={handleFormChange}
+                                                    placeholder="e.g., Founder Director"
+                                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        {/* Company Name */}
+                                        <div>
+                                            <label className="block text-sm font-semibold text-gray-700 mb-2">Company Name</label>
+                                            <input
+                                                type="text"
+                                                name="companyName"
+                                                value={formData.companyName}
+                                                onChange={handleFormChange}
+                                                placeholder="e.g., WinVinaya InfoSystems"
+                                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                            />
+                                        </div>
+
+                                        {/* Email */}
+                                        <div>
+                                            <label className="block text-sm font-semibold text-gray-700 mb-2">Email</label>
+                                            <input
+                                                type="email"
+                                                name="email"
+                                                value={formData.email}
+                                                onChange={handleFormChange}
+                                                placeholder="e.g., shiva.jayagopal@WinVinaya.com"
+                                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                            />
+                                        </div>
+
+                                        {/* Phone Numbers Row */}
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-sm font-semibold text-gray-700 mb-2">Phone 1</label>
+                                                <input
+                                                    type="tel"
+                                                    name="phone1"
+                                                    value={formData.phone1}
+                                                    onChange={handleFormChange}
+                                                    placeholder="e.g., +91 96764 33359"
+                                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-semibold text-gray-700 mb-2">Phone 2</label>
+                                                <input
+                                                    type="tel"
+                                                    name="phone2"
+                                                    value={formData.phone2}
+                                                    onChange={handleFormChange}
+                                                    placeholder="Optional"
+                                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        {/* Website */}
+                                        <div>
+                                            <label className="block text-sm font-semibold text-gray-700 mb-2">Website</label>
+                                            <input
+                                                type="url"
+                                                name="website"
+                                                value={formData.website}
+                                                onChange={handleFormChange}
+                                                placeholder="e.g., www.WinVinaya.com"
+                                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                            />
+                                        </div>
+
+                                        {/* Additional Info */}
+                                        <div>
+                                            <label className="block text-sm font-semibold text-gray-700 mb-2">Additional Info</label>
+                                            <textarea
+                                                name="additionalInfo"
+                                                value={formData.additionalInfo}
+                                                onChange={handleFormChange}
+                                                placeholder="Services, specializations, notes..."
+                                                rows="3"
+                                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                                            />
+                                        </div>
+
+                                        {/* Action Buttons */}
+                                        <div className="flex gap-3 pt-6 border-t-2 border-gray-200">
+                                            <button
+                                                onClick={handleSave}
+                                                className="flex-1 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition font-semibold text-lg"
+                                            >
+                                                {editingId ? '💾 Update Card' : '💾 Save Card'}
+                                            </button>
+                                            <button
+                                                onClick={resetForm}
+                                                className="flex-1 bg-gray-300 text-gray-800 px-6 py-3 rounded-lg hover:bg-gray-400 transition font-semibold text-lg"
+                                            >
+                                                🔄 Clear
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Saved Cards Section */}
+                        {savedCards.length > 0 && (
+                            <div className="mt-12">
+                                <div className="bg-white rounded-lg shadow-lg p-8">
+                                    <h2 className="text-2xl font-bold text-gray-900 mb-6">📇 Saved Cards ({savedCards.length})</h2>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                                        {savedCards.map((card) => (
+                                            <div key={card.id} className="border border-gray-300 rounded-lg overflow-hidden hover:shadow-lg transition bg-gray-50">
+                                                {card.image && (
+                                                    <img src={card.image} alt={card.name} className="w-full h-40 object-cover" />
+                                                )}
+                                                <div className="p-4">
+                                                    <h3 className="font-bold text-gray-900 text-sm">{card.name}</h3>
+                                                    {card.designation && <p className="text-xs text-gray-600">{card.designation}</p>}
+                                                    {card.companyName && <p className="text-xs text-blue-600 font-medium">{card.companyName}</p>}
+                                                    {card.email && <p className="text-xs text-gray-600 truncate">{card.email}</p>}
+                                                    {card.phone1 && <p className="text-xs text-gray-600">{card.phone1}</p>}
+
+                                                    <div className="flex gap-2 mt-3">
+                                                        <button
+                                                            onClick={() => handleLoadCard(card)}
+                                                            className="flex-1 bg-blue-600 text-white px-3 py-2 rounded text-xs hover:bg-blue-700 font-medium"
+                                                        >
+                                                            ✏️ Edit
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleDelete(card.id)}
+                                                            className="flex-1 bg-red-600 text-white px-3 py-2 rounded text-xs hover:bg-red-700 font-medium"
+                                                        >
+                                                            🗑️ Delete
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        ReactDOM.render(<BusinessCardManager />, document.getElementById('root'));
+    </script>
+</body>
+</html>
