@@ -138,11 +138,13 @@
                 });
 
                 const designationKeywords = ['director', 'founder', 'ceo', 'cto', 'cfo', 'coo', 'manager', 'president', 'head', 'engineer', 'consultant', 'executive', 'officer', 'lead', 'vp', 'owner'];
+                let designationIdx = -1;
                 lines.forEach((line, idx) => {
                     if (usedLines.has(idx)) return;
                     const lower = line.toLowerCase();
                     if (!updated.designation && designationKeywords.some(k => lower.includes(k)) && line.length < 60) {
                         updated.designation = line;
+                        designationIdx = idx;
                         usedLines.add(idx);
                     }
                 });
@@ -157,11 +159,28 @@
                     }
                 });
 
+                // Slogans/taglines commonly sit right under the company name - filter these out of name candidates
+                const sloganWords = ['enabling', 'empowering', 'success', 'through', 'knowledge', 'innovat', 'solutions for', 'delivering', 'driving', 'transform', 'excellence', 'partner', 'your trusted', 'leading provider'];
+                const looksLikeSlogan = (line) => {
+                    const lower = line.toLowerCase();
+                    return sloganWords.some(w => lower.includes(w)) || line.split(' ').length > 5;
+                };
+
+                // Best signal: the line immediately above the designation is usually the person's name
+                if (!updated.name && designationIdx > 0) {
+                    const candidate = lines[designationIdx - 1];
+                    if (candidate && !usedLines.has(designationIdx - 1) && !looksLikeSlogan(candidate) && candidate.length < 50) {
+                        updated.name = candidate;
+                        usedLines.add(designationIdx - 1);
+                    }
+                }
+
+                // Fallback: first remaining line that doesn't look like a slogan
                 if (!updated.name) {
-                    const nameCandidate = lines.find((line, idx) => !usedLines.has(idx) && line.length < 50);
-                    if (nameCandidate) {
-                        updated.name = nameCandidate;
-                        usedLines.add(lines.indexOf(nameCandidate));
+                    const nameIdx = lines.findIndex((line, idx) => !usedLines.has(idx) && line.length < 50 && !looksLikeSlogan(line));
+                    if (nameIdx !== -1) {
+                        updated.name = lines[nameIdx];
+                        usedLines.add(nameIdx);
                     }
                 }
 
