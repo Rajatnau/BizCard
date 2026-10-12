@@ -32,18 +32,24 @@
             const [editingId, setEditingId] = useState(null);
             const [isExtracting, setIsExtracting] = useState(false);
             const [extractError, setExtractError] = useState('');
+            const [isLoadingCards, setIsLoadingCards] = useState(true);
+            const [isSaving, setIsSaving] = useState(false);
             const fileInputRef = useRef(null);
 
             useEffect(() => {
                 loadSavedCards();
             }, []);
 
-            const loadSavedCards = () => {
+            const loadSavedCards = async () => {
+                setIsLoadingCards(true);
                 try {
-                    const cards = JSON.parse(localStorage.getItem('businessCards') || '[]');
-                    setSavedCards(cards);
+                    const response = await fetch('/api/cards');
+                    const data = await response.json();
+                    setSavedCards(data.cards || []);
                 } catch (e) {
                     console.error('Error loading saved cards:', e);
+                } finally {
+                    setIsLoadingCards(false);
                 }
             };
 
@@ -200,7 +206,7 @@
                 setFormData(prev => ({ ...prev, [name]: value }));
             };
 
-            const handleSave = () => {
+            const handleSave = async () => {
                 if (!formData.name) {
                     alert('Please enter at least a name');
                     return;
@@ -208,24 +214,32 @@
 
                 const card = {
                     id: editingId || Date.now(),
-                    timestamp: new Date().toLocaleString(),
                     image: cardImage,
                     ...formData,
                 };
 
-                let updatedCards;
-                if (editingId) {
-                    updatedCards = savedCards.map(c => c.id === editingId ? card : c);
-                    setEditingId(null);
-                    alert('Business card updated!');
-                } else {
-                    updatedCards = [...savedCards, card];
-                    alert('Business card saved!');
-                }
+                setIsSaving(true);
+                try {
+                    const response = await fetch('/api/cards', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(card)
+                    });
 
-                setSavedCards(updatedCards);
-                localStorage.setItem('businessCards', JSON.stringify(updatedCards));
-                resetForm();
+                    if (!response.ok) {
+                        throw new Error('Save failed');
+                    }
+
+                    alert(editingId ? 'Business card updated!' : 'Business card saved!');
+                    setEditingId(null);
+                    resetForm();
+                    await loadSavedCards();
+                } catch (e) {
+                    console.error('Error saving card:', e);
+                    alert('Could not save to database. Please try again.');
+                } finally {
+                    setIsSaving(false);
+                }
             };
 
             const handleLoadCard = (card) => {
@@ -244,11 +258,15 @@
                 window.scrollTo(0, 0);
             };
 
-            const handleDelete = (id) => {
-                if (confirm('Are you sure?')) {
-                    const updatedCards = savedCards.filter(card => card.id !== id);
-                    setSavedCards(updatedCards);
-                    localStorage.setItem('businessCards', JSON.stringify(updatedCards));
+            const handleDelete = async (id) => {
+                if (!confirm('Are you sure?')) return;
+                try {
+                    const response = await fetch('/api/cards?id=' + id, { method: 'DELETE' });
+                    if (!response.ok) throw new Error('Delete failed');
+                    await loadSavedCards();
+                } catch (e) {
+                    console.error('Error deleting card:', e);
+                    alert('Could not delete from database. Please try again.');
                 }
             };
 
@@ -443,9 +461,10 @@
                                         <div className="flex gap-3 pt-6 border-t-2 border-gray-200">
                                             <button
                                                 onClick={handleSave}
-                                                className="flex-1 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition font-semibold text-lg"
+                                                disabled={isSaving}
+                                                className="flex-1 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition font-semibold text-lg disabled:bg-blue-300"
                                             >
-                                                💾 Save Card
+                                                {isSaving ? 'Saving...' : '💾 Save Card'}
                                             </button>
                                             <button
                                                 onClick={resetForm}
@@ -459,7 +478,11 @@
                             </div>
                         </div>
 
-                        {savedCards.length > 0 && (
+                        {isLoadingCards && (
+                            <div className="mt-12 text-center text-gray-500">Loading saved cards...</div>
+                        )}
+
+                        {!isLoadingCards && savedCards.length > 0 && (
                             <div className="mt-12">
                                 <div className="bg-white rounded-lg shadow-lg p-8">
                                     <h2 className="text-2xl font-bold text-gray-900 mb-6">📇 Saved Cards ({savedCards.length})</h2>
