@@ -12,6 +12,7 @@
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
 
     <script type="text/babel">
         const { useState, useRef, useEffect } = React;
@@ -270,6 +271,37 @@
                 }
             };
 
+            const exportToExcel = () => {
+                if (savedCards.length === 0) {
+                    alert('No cards to export yet.');
+                    return;
+                }
+
+                const rows = savedCards.map(card => ({
+                    'Name': card.name || '',
+                    'Designation': card.designation || '',
+                    'Company Name': card.companyName || '',
+                    'Email': card.email || '',
+                    'Phone 1': card.phone1 || '',
+                    'Phone 2': card.phone2 || '',
+                    'Website': card.website || '',
+                    'Additional Info': card.additionalInfo || '',
+                    'Saved On': card.timestamp ? new Date(card.timestamp).toLocaleString() : ''
+                }));
+
+                const worksheet = XLSX.utils.json_to_sheet(rows);
+                worksheet['!cols'] = [
+                    { wch: 22 }, { wch: 20 }, { wch: 25 }, { wch: 28 },
+                    { wch: 16 }, { wch: 16 }, { wch: 22 }, { wch: 35 }, { wch: 20 }
+                ];
+
+                const workbook = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(workbook, worksheet, 'Business Cards');
+
+                const dateStr = new Date().toISOString().slice(0, 10);
+                XLSX.writeFile(workbook, `business-cards-${dateStr}.xlsx`);
+            };
+
             const resetForm = () => {
                 setCardImage(null);
                 setEditingId(null);
@@ -485,7 +517,15 @@
                         {!isLoadingCards && savedCards.length > 0 && (
                             <div className="mt-12">
                                 <div className="bg-white rounded-lg shadow-lg p-8">
-                                    <h2 className="text-2xl font-bold text-gray-900 mb-6">📇 Saved Cards ({savedCards.length})</h2>
+                                    <div className="flex items-center justify-between mb-6">
+                                        <h2 className="text-2xl font-bold text-gray-900">📇 Saved Cards ({savedCards.length})</h2>
+                                        <button
+                                            onClick={exportToExcel}
+                                            className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition font-semibold text-sm"
+                                        >
+                                            📥 Export to Excel
+                                        </button>
+                                    </div>
                                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                                         {savedCards.map((card) => (
                                             <div key={card.id} className="border border-gray-300 rounded-lg overflow-hidden hover:shadow-lg transition bg-gray-50">
