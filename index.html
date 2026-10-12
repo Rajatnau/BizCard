@@ -30,6 +30,8 @@
             });
             const [savedCards, setSavedCards] = useState([]);
             const [editingId, setEditingId] = useState(null);
+            const [isExtracting, setIsExtracting] = useState(false);
+            const [extractError, setExtractError] = useState('');
             const fileInputRef = useRef(null);
 
             useEffect(() => {
@@ -52,8 +54,126 @@
                 const reader = new FileReader();
                 reader.onload = (event) => {
                     setCardImage(event.target.result);
+                    extractTextFromCard(file);
                 };
                 reader.readAsDataURL(file);
+            };
+
+            const extractTextFromCard = async (file) => {
+                setIsExtracting(true);
+                setExtractError('');
+                try {
+                    const body = new FormData();
+                    body.append('file', file);
+                    body.append('apikey', 'helloworld');
+                    body.append('language', 'eng');
+                    body.append('isOverlayRequired', 'false');
+                    body.append('OCREngine', '2');
+                    body.append('scale', 'true');
+                    body.append('detectOrientation', 'true');
+
+                    const response = await fetch('https://api.ocr.space/parse/image', {
+                        method: 'POST',
+                        body: body
+                    });
+
+                    const result = await response.json();
+
+                    if (result.IsErroredOnProcessing) {
+                        setExtractError(result.ErrorMessage?.[0] || 'OCR failed. Please fill in manually.');
+                        return;
+                    }
+
+                    const parsedText = result.ParsedResults?.[0]?.ParsedText || '';
+                    if (!parsedText.trim()) {
+                        setExtractError('No text detected. Please fill in manually.');
+                        return;
+                    }
+
+                    parseBusinessCardText(parsedText);
+                } catch (error) {
+                    console.error('OCR error:', error);
+                    setExtractError('Could not reach OCR service. Please fill in manually.');
+                } finally {
+                    setIsExtracting(false);
+                }
+            };
+
+            const parseBusinessCardText = (text) => {
+                const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 1);
+                const updated = { companyName: '', name: '', designation: '', email: '', phone1: '', phone2: '', website: '', additionalInfo: '' };
+                const usedLines = new Set();
+
+                lines.forEach((line, idx) => {
+                    const emailMatch = line.match(/[\w.+-]+@[\w-]+\.[\w.-]+/);
+                    if (emailMatch && !updated.email) {
+                        updated.email = emailMatch[0];
+                        usedLines.add(idx);
+                    }
+                });
+
+                lines.forEach((line, idx) => {
+                    if (usedLines.has(idx)) return;
+                    const phoneMatch = line.match(/(\+?\d[\d\s\-().]{7,}\d)/);
+                    if (phoneMatch) {
+                        const cleaned = phoneMatch[0].trim();
+                        if (!updated.phone1) {
+                            updated.phone1 = cleaned;
+                            usedLines.add(idx);
+                        } else if (!updated.phone2) {
+                            updated.phone2 = cleaned;
+                            usedLines.add(idx);
+                        }
+                    }
+                });
+
+                lines.forEach((line, idx) => {
+                    if (usedLines.has(idx)) return;
+                    const lower = line.toLowerCase();
+                    const urlMatch = line.match(/((https?:\/\/)?(www\.)?[\w-]+\.(com|co\.in|co\.uk|io|org|net|in)[\w\/.-]*)/i);
+                    if (urlMatch && !updated.website && !lower.includes('@')) {
+                        updated.website = urlMatch[0];
+                        usedLines.add(idx);
+                    }
+                });
+
+                const designationKeywords = ['director', 'founder', 'ceo', 'cto', 'cfo', 'coo', 'manager', 'president', 'head', 'engineer', 'consultant', 'executive', 'officer', 'lead', 'vp', 'owner'];
+                lines.forEach((line, idx) => {
+                    if (usedLines.has(idx)) return;
+                    const lower = line.toLowerCase();
+                    if (!updated.designation && designationKeywords.some(k => lower.includes(k)) && line.length < 60) {
+                        updated.designation = line;
+                        usedLines.add(idx);
+                    }
+                });
+
+                const companyKeywords = ['systems', 'solutions', 'technologies', 'services', 'pvt', 'ltd', 'inc', 'llc', 'corp', 'infosystems', 'enterprises', 'group'];
+                lines.forEach((line, idx) => {
+                    if (usedLines.has(idx)) return;
+                    const lower = line.toLowerCase();
+                    if (!updated.companyName && companyKeywords.some(k => lower.includes(k)) && line.length < 80) {
+                        updated.companyName = line;
+                        usedLines.add(idx);
+                    }
+                });
+
+                if (!updated.name) {
+                    const nameCandidate = lines.find((line, idx) => !usedLines.has(idx) && line.length < 50);
+                    if (nameCandidate) {
+                        updated.name = nameCandidate;
+                        usedLines.add(lines.indexOf(nameCandidate));
+                    }
+                }
+
+                const leftover = lines.filter((line, idx) => !usedLines.has(idx)).join(', ');
+                if (leftover) {
+                    updated.additionalInfo = leftover;
+                }
+
+                setFormData(prev => ({
+                    ...prev,
+                    ...Object.fromEntries(Object.entries(updated).filter(([k, v]) => v))
+                }));
             };
 
             const handleFormChange = (e) => {
@@ -116,6 +236,7 @@
             const resetForm = () => {
                 setCardImage(null);
                 setEditingId(null);
+                setExtractError('');
                 setFormData({
                     companyName: '',
                     name: '',
@@ -145,6 +266,18 @@
                             <div className="lg:col-span-1">
                                 <div className="bg-white rounded-lg shadow-lg p-6 h-full">
                                     <h2 className="text-lg font-bold text-gray-900 mb-4">Card Image</h2>
+
+                                    {isExtracting && (
+                                        <div className="mb-3 bg-blue-100 border border-blue-300 rounded-lg p-3 text-center">
+                                            <p className="text-sm font-medium text-blue-700">🔍 Extracting text from card...</p>
+                                        </div>
+                                    )}
+
+                                    {extractError && !isExtracting && (
+                                        <div className="mb-3 bg-yellow-100 border border-yellow-300 rounded-lg p-3 text-center">
+                                            <p className="text-xs font-medium text-yellow-800">⚠️ {extractError}</p>
+                                        </div>
+                                    )}
 
                                     <div
                                         onClick={() => fileInputRef.current?.click()}
