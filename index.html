@@ -21,8 +21,10 @@
             const [cardImage, setCardImage] = useState(null);
             const [formData, setFormData] = useState({
                 companyName: '',
+                companyName2: '',
                 name: '',
                 designation: '',
+                designation2: '',
                 email: '',
                 phone1: '',
                 phone2: '',
@@ -247,8 +249,10 @@
                 setCardImage(card.image);
                 setFormData({
                     companyName: card.companyName,
+                    companyName2: card.companyName2 || '',
                     name: card.name,
                     designation: card.designation,
+                    designation2: card.designation2 || '',
                     email: card.email,
                     phone1: card.phone1,
                     phone2: card.phone2,
@@ -280,7 +284,9 @@
                 const rows = savedCards.map(card => ({
                     'Name': card.name || '',
                     'Designation': card.designation || '',
+                    'Designation 2': card.designation2 || '',
                     'Company Name': card.companyName || '',
+                    'Company Name 2': card.companyName2 || '',
                     'Email': card.email || '',
                     'Phone 1': card.phone1 || '',
                     'Phone 2': card.phone2 || '',
@@ -291,7 +297,7 @@
 
                 const worksheet = XLSX.utils.json_to_sheet(rows);
                 worksheet['!cols'] = [
-                    { wch: 22 }, { wch: 20 }, { wch: 25 }, { wch: 28 },
+                    { wch: 22 }, { wch: 20 }, { wch: 20 }, { wch: 25 }, { wch: 25 }, { wch: 28 },
                     { wch: 16 }, { wch: 16 }, { wch: 22 }, { wch: 35 }, { wch: 20 }
                 ];
 
@@ -308,8 +314,10 @@
                 setExtractError('');
                 setFormData({
                     companyName: '',
+                    companyName2: '',
                     name: '',
                     designation: '',
+                    designation2: '',
                     email: '',
                     phone1: '',
                     phone2: '',
@@ -417,14 +425,39 @@
                                             </div>
                                         </div>
 
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-sm font-semibold text-gray-700 mb-2">Company Name</label>
+                                                <input
+                                                    type="text"
+                                                    name="companyName"
+                                                    value={formData.companyName}
+                                                    onChange={handleFormChange}
+                                                    placeholder="Company name"
+                                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-semibold text-gray-700 mb-2">Company Name 2</label>
+                                                <input
+                                                    type="text"
+                                                    name="companyName2"
+                                                    value={formData.companyName2}
+                                                    onChange={handleFormChange}
+                                                    placeholder="Optional second company"
+                                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                />
+                                            </div>
+                                        </div>
+
                                         <div>
-                                            <label className="block text-sm font-semibold text-gray-700 mb-2">Company Name</label>
+                                            <label className="block text-sm font-semibold text-gray-700 mb-2">Designation 2</label>
                                             <input
                                                 type="text"
-                                                name="companyName"
-                                                value={formData.companyName}
+                                                name="designation2"
+                                                value={formData.designation2}
                                                 onChange={handleFormChange}
-                                                placeholder="Company name"
+                                                placeholder="Optional second job title"
                                                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                                             />
                                         </div>
@@ -536,6 +569,8 @@
                                                     <h3 className="font-bold text-gray-900">{card.name}</h3>
                                                     {card.designation && <p className="text-xs text-gray-600">{card.designation}</p>}
                                                     {card.companyName && <p className="text-xs text-blue-600 font-medium">{card.companyName}</p>}
+                                                    {card.designation2 && <p className="text-xs text-gray-600">{card.designation2}</p>}
+                                                    {card.companyName2 && <p className="text-xs text-blue-600 font-medium">{card.companyName2}</p>}
                                                     {card.email && <p className="text-xs text-gray-600 truncate">{card.email}</p>}
                                                     {card.phone1 && <p className="text-xs text-gray-600">{card.phone1}</p>}
 

@@ -16,6 +16,8 @@ async function ensureTable() {
       created_at TIMESTAMPTZ DEFAULT now()
     );
   `;
+  await sql`ALTER TABLE business_cards ADD COLUMN IF NOT EXISTS designation2 TEXT;`;
+  await sql`ALTER TABLE business_cards ADD COLUMN IF NOT EXISTS company_name2 TEXT;`;
 }
 
 module.exports = async (req, res) => {
@@ -37,7 +39,9 @@ module.exports = async (req, res) => {
         id: Number(r.id),
         name: r.name,
         designation: r.designation,
+        designation2: r.designation2,
         companyName: r.company_name,
+        companyName2: r.company_name2,
         email: r.email,
         phone1: r.phone1,
         phone2: r.phone2,
@@ -53,12 +57,14 @@ module.exports = async (req, res) => {
       const body = req.body;
       const id = body.id || Date.now();
       await sql`
-        INSERT INTO business_cards (id, name, designation, company_name, email, phone1, phone2, website, additional_info, image)
-        VALUES (${id}, ${body.name || ''}, ${body.designation || ''}, ${body.companyName || ''}, ${body.email || ''}, ${body.phone1 || ''}, ${body.phone2 || ''}, ${body.website || ''}, ${body.additionalInfo || ''}, ${body.image || ''})
+        INSERT INTO business_cards (id, name, designation, designation2, company_name, company_name2, email, phone1, phone2, website, additional_info, image)
+        VALUES (${id}, ${body.name || ''}, ${body.designation || ''}, ${body.designation2 || ''}, ${body.companyName || ''}, ${body.companyName2 || ''}, ${body.email || ''}, ${body.phone1 || ''}, ${body.phone2 || ''}, ${body.website || ''}, ${body.additionalInfo || ''}, ${body.image || ''})
         ON CONFLICT (id) DO UPDATE SET
           name = EXCLUDED.name,
           designation = EXCLUDED.designation,
+          designation2 = EXCLUDED.designation2,
           company_name = EXCLUDED.company_name,
+          company_name2 = EXCLUDED.company_name2,
           email = EXCLUDED.email,
           phone1 = EXCLUDED.phone1,
           phone2 = EXCLUDED.phone2,
